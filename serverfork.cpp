@@ -8,12 +8,14 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <climits>
+#include <fstream>
+#include <sys/stat.h>
 
 #define DEBUG
-#define BACKLOG 5
+#define BACKLOG INT_MAX
 #define PATH_SIZE 1000
 #define SOCKET_FAILURE -1
-#define MAXDATASIZE INT_MAX
+#define MAXDATASIZE 50000
 
 using namespace std;
 
@@ -56,6 +58,7 @@ void serveRequest(int clientSocket) {
 
   if (!(strcmp(accessMethod, "GET") == 0 || strcmp(accessMethod, "HEAD") == 0)) {
     cerr << "error: can't accept access method " << accessMethod << endl;
+    httpHeader(clientSocket, 1);
     close(clientSocket);
     return;
   }
@@ -66,31 +69,54 @@ void serveRequest(int clientSocket) {
     fileName++;
 
   if (access(fileName, F_OK) != 0) {
-    httpHeader(clientSocket, 2);
+    httpHeader(clientSocket, 2);    
     return;
   }
-  else if (access(fileName, R_OK) != 0) {
+  if (access(fileName, R_OK) != 0) {
     httpHeader(clientSocket, 1);
     return;
   }
-  else
-    httpHeader(clientSocket, 0);
 
-  FILE *fp = fopen(fileName, "rb");
-  if (fp == NULL) {
-    cerr << "error: oops no file found\n";
-    close(clientSocket);
-    return;
+  // FILE *fp = fopen(fileName, "rb");
+  // if (fp == NULL) {
+  //   cerr << "error: oops no file found\n";
+  //   httpHeader(clientSocket, 2);
+  //   close(clientSocket);
+  //   return;
+  // }
+
+  char *okStatus = "HTTP/1.0 200 OK\r\n"
+                       "Content-Type: text/html\r\n"
+                       "Connection: close\r\n";
+
+  string line;
+  ifstream myfile(fileName);
+  struct stat filestatus;
+  stat(fileName, &filestatus);
+  int size = filestatus.st_size;
+
+  sprintf(buffer, "%s%s: %d", okStatus, "Content-Length", size, ": 20\r\n\r\n");
+  cout << buffer << endl;
+  verify(send(clientSocket, okStatus, strlen(okStatus), 0));
+
+  if (myfile.is_open()) {
+    while (myfile.good()) {
+        getline(myfile, line);
+        strcat(buffer, line.c_str());
+    }
   }
 
-  while (bytesRead = fread(buffer, 1, MAXDATASIZE, fp)) {
-    cout << "sending " << bytesRead << " bytes\n";
-    write(clientSocket, buffer, bytesRead);
-  }
+  write(clientSocket, buffer, strlen(buffer));
+  cout << size << " bytes\n";
+
+  // while (bytesRead = fread(buffer, 1, MAXDATASIZE, fp)) {
+  //   cout << "sending " << bytesRead << " bytes\n";
+  //   write(clientSocket, buffer, bytesRead);
+  // }
   
   close(clientSocket);
   free(buffer);
-  fclose(fp);
+  // fclose(fp);
   return;
 }
 
@@ -153,6 +179,7 @@ int main(int argc, char *argv[]) {
     pid = fork();
     
     if(pid == 0) {
+      close(listenFd); 
       serveRequest(acceptFd);
       exit(0);
     } 
