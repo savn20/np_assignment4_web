@@ -1,21 +1,26 @@
+CC_FLAGS= -Wall -I.
+LD_FLAGS= -Wall -L./ 
 
-all: serverthread serverfork
-
-
+all: libcalc serverthread serverfork
 
 serverthread.o: serverthread.cpp
-	$(CXX) -Wall -c serverthread.cpp -I.
+	$(CXX) $(CC_FLAGS) $(LD_FLAGS) -c serverthread.cpp
 
 serverfork.o: serverfork.cpp
-	$(CXX) -Wall -c serverfork.cpp -I.
+	$(CXX) $(CC_FLAGS) $(LD_FLAGS) -c serverfork.cpp
 
 
 serverfork: serverfork.o 
-	$(CXX) -L./ -Wall -o serverfork serverfork.o
+	$(CXX) $(LD_FLAGS) -o serverfork serverfork.o -lcalc
 
 serverthread: serverthread.o 
-	$(CXX) -L./ -Wall -o serverthread serverthread.o -lpthread
+	$(CXX) $(LD_FLAGS) -o serverthread serverthread.o -lpthread -lcalc
 
+calcLib.o: calcLib.c calcLib.h
+	gcc -Wall -fPIC -c calcLib.c
+
+libcalc: calcLib.o
+	ar -rc libcalc.a -o calcLib.o
 
 clean:
 	rm *.o *.a perf_*.txt  tmp.* serverfork serverthread

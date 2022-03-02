@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ##Variables update as to fit your scenario
-portFORK=8282
+portFORK=8283
 portTHREAD=8283
 testing=1
 

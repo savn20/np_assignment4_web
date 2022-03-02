@@ -35,4 +35,9 @@
 #My files
 *.log
 *.png
+
 randomFile
+perf_*.txt  
+tmp.*
+serverfork
+serverthread

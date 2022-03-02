@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 
+#include <pthread.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -15,11 +15,52 @@
 #define PATH_SIZE 1000
 #define SOCKET_FAILURE -1
 #define MAXDATASIZE 1400
+#define POOLSIZE 50
 
 using namespace std;
 
-char *buffer = (char *)malloc(MAXDATASIZE);
-char *accessMethod, *fileName;
+struct node {
+    struct node* next;
+    int* client_socket;
+};
+
+typedef struct node node_t;
+
+node_t *head = NULL;
+node_t *tail = NULL;
+
+pthread_t clientPool[POOLSIZE];
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t terenary = PTHREAD_COND_INITIALIZER;
+int totalClients = 0;
+
+void enqueue(int *client_socket) {
+    node_t *newnode = (node_t*) malloc(sizeof(node_t));
+    newnode->client_socket = client_socket;
+    newnode->next = NULL;
+
+    if (tail == NULL) 
+        head = newnode;
+    else 
+        tail->next = newnode;
+    
+    tail = newnode;   
+}
+
+// returns NULL if the queue is empty.
+// Returns the pointer to a client_socket, if there is one to get
+int* dequeue() {
+    if (head == NULL) 
+         return NULL;
+        
+    int *result = head->client_socket;
+    node_t *temp = head;
+    head = head->next;
+
+    if (head == NULL) {tail = NULL;}
+    free(temp);
+    return result;
+}
 
 void verify(int hasError) {
   if (hasError == SOCKET_FAILURE) {
@@ -40,9 +81,14 @@ void httpHeader(int handler, int errorCode) {
     send(handler, header, strlen(header), 0);
 }
 
-void *serveRequest(void *client) {
+void *serveRequest(void* client) {
   int clientSocket = *(int *)client;
   free(client);
+
+  cout << "serving request for " << clientSocket << endl;
+
+  char *buffer = (char *)malloc(MAXDATASIZE);
+  char *accessMethod, *fileName;
 
   size_t bytes;
   int bytesRead = 0;
@@ -89,9 +135,24 @@ void *serveRequest(void *client) {
     write(clientSocket, buffer, bytesRead);
   }
 
+  free(buffer);
   close(clientSocket);
   fclose(fp);
   return NULL;
+}
+
+void* handleIncomingRequest(void* args){
+  while (true) {
+    int* newClient;
+    strerror(pthread_mutex_lock(&mutex));
+    strerror(pthread_cond_wait(&terenary, &mutex));
+    newClient = dequeue();
+    strerror(pthread_mutex_unlock(&mutex));
+
+    if(newClient != NULL){
+      serveRequest(newClient);
+    }
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -120,6 +181,9 @@ int main(int argc, char *argv[]) {
       acceptFd = -1, // for client socket 
       reuseAddress = 1;
 
+  for (int i = 0; i < POOLSIZE; i++) 
+    pthread_create(&clientPool[i], NULL, handleIncomingRequest, NULL);
+
   verify(listenFd = socket(AF_INET, SOCK_STREAM, 0));
 
   /* initialize the socket addresses */
@@ -144,13 +208,17 @@ int main(int argc, char *argv[]) {
     cout << "\n*****server waiting for new client connection:*****\n";
     clientAddressLength = sizeof(clientAddress);
     acceptFd = accept(listenFd, (struct sockaddr *)&clientAddress, &clientAddressLength);
-    
-    cout << "accept = " << acceptFd << " listenFd = " << listenFd << endl;
 
-    pthread_t clientThread;
+    totalClients++; 
+    cout << "totalClient = " << totalClients << " accept = " << acceptFd << " listenFd = " << listenFd << endl;
+    
     int *client = (int *)malloc(sizeof(int));
     *client = acceptFd;
-    pthread_create(&clientThread, NULL, serveRequest, client);
+    
+    strerror(pthread_mutex_lock(&mutex));
+    enqueue(client);
+    strerror(pthread_cond_signal(&terenary));
+    strerror(pthread_mutex_unlock(&mutex));
   }
   
   return (0);
