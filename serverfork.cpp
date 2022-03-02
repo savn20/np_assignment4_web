@@ -3,22 +3,25 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <netdb.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <netdb.h>
 #include <arpa/inet.h>
 #include <climits>
 #include <fstream>
-#include <sys/stat.h>
 
 #define DEBUG
 #define BACKLOG INT_MAX
 #define PATH_SIZE 1000
 #define SOCKET_FAILURE -1
-#define MAXDATASIZE 50000
+#define MAXDATASIZE 1400
 
 using namespace std;
 
+char *buffer = (char *)malloc(MAXDATASIZE);
 int totalClients = 0;
 
 void verify(int hasError) {
@@ -40,9 +43,8 @@ void httpHeader(int handler, int errorCode) {
     send(handler, header, strlen(header), 0);
 }
 
-void serveRequest(int clientSocket) {
-  char *buffer = (char *)malloc(MAXDATASIZE);
 
+void serveRequest(int clientSocket) {
   size_t bytes;
   int bytesRead = 0;
 
@@ -69,54 +71,30 @@ void serveRequest(int clientSocket) {
     fileName++;
 
   if (access(fileName, F_OK) != 0) {
-    httpHeader(clientSocket, 2);    
+    httpHeader(clientSocket, 2);
     return;
   }
-  if (access(fileName, R_OK) != 0) {
+  else if (access(fileName, R_OK) != 0) {
     httpHeader(clientSocket, 1);
     return;
   }
-
-  // FILE *fp = fopen(fileName, "rb");
-  // if (fp == NULL) {
-  //   cerr << "error: oops no file found\n";
-  //   httpHeader(clientSocket, 2);
-  //   close(clientSocket);
-  //   return;
-  // }
-
-  char *okStatus = "HTTP/1.0 200 OK\r\n"
-                       "Content-Type: text/html\r\n"
-                       "Connection: close\r\n";
-
-  string line;
-  ifstream myfile(fileName);
-  struct stat filestatus;
-  stat(fileName, &filestatus);
-  int size = filestatus.st_size;
-
-  sprintf(buffer, "%s%s: %d", okStatus, "Content-Length", size, ": 20\r\n\r\n");
-  cout << buffer << endl;
-  verify(send(clientSocket, okStatus, strlen(okStatus), 0));
-
-  if (myfile.is_open()) {
-    while (myfile.good()) {
-        getline(myfile, line);
-        strcat(buffer, line.c_str());
-    }
+  else
+    httpHeader(clientSocket, 0);
+  
+  FILE *fp = fopen(fileName, "rb");
+  if (fp == NULL) {
+    cerr << "error: oops no file found\n";
+    httpHeader(clientSocket, 2);
+    return;
   }
 
-  write(clientSocket, buffer, strlen(buffer));
-  cout << size << " bytes\n";
-
-  // while (bytesRead = fread(buffer, 1, MAXDATASIZE, fp)) {
-  //   cout << "sending " << bytesRead << " bytes\n";
-  //   write(clientSocket, buffer, bytesRead);
-  // }
+  while (bytesRead = fread(buffer, 1, MAXDATASIZE, fp)) {
+    cout << "sending " << bytesRead << " bytes\n";
+    send(clientSocket, buffer, bytesRead, 0);
+    // write(clientSocket, buffer, strlen(buffer));
+  }
   
-  close(clientSocket);
-  free(buffer);
-  // fclose(fp);
+  fclose(fp);
   return;
 }
 
@@ -172,20 +150,31 @@ int main(int argc, char *argv[]) {
     clientAddressLength = sizeof(clientAddress);
     acceptFd = accept(listenFd, (struct sockaddr *)&clientAddress, &clientAddressLength);
     totalClients++;
+    cout << "client = " << totalClients << " accept = " << acceptFd << " listenFd = " << listenFd << endl;
     
-    cout << "accept = " << acceptFd << " listenFd = " << listenFd << endl;
-
     /* child process is created for serving each new clients */
     pid = fork();
-    
-    if(pid == 0) {
-      close(listenFd); 
+    if(pid == 0) { 
       serveRequest(acceptFd);
+      close(acceptFd);
       exit(0);
-    } 
-    
-    cout << "Parent, close acceptFd().\n";
-    close(acceptFd); // sock is closed BY PARENT
+    }
+    else {
+
+      int stat_val;
+      waitpid(pid, &stat_val, 0);
+      
+      if (WIFEXITED(stat_val))
+        printf("Child exited with code %d\n", WEXITSTATUS(stat_val));
+      
+      else if (WIFSIGNALED(stat_val))
+        printf("Child terminated abnormally, signal %d\n", WTERMSIG(stat_val));
+
+      printf("exit code: %d, signal: %d, raw stat_val: 0x%x %d", WEXITSTATUS(stat_val), WTERMSIG(stat_val), stat_val, stat_val);
+      
+      printf("Parent, close connfd().\n");
+      close(acceptFd);//sock is closed BY PARENT
+    }
   }
   return (0);
 }

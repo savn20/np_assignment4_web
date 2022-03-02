@@ -11,14 +11,15 @@
 #include <climits>
 
 #define DEBUG
-#define BACKLOG 5
+#define BACKLOG INT_MAX
 #define PATH_SIZE 1000
 #define SOCKET_FAILURE -1
-#define MAXDATASIZE INT_MAX
+#define MAXDATASIZE 1400
 
 using namespace std;
 
-int totalClients = 0;
+char *buffer = (char *)malloc(MAXDATASIZE);
+char *accessMethod, *fileName;
 
 void verify(int hasError) {
   if (hasError == SOCKET_FAILURE) {
@@ -43,12 +44,8 @@ void *serveRequest(void *client) {
   int clientSocket = *(int *)client;
   free(client);
 
-  char *buffer = (char *)malloc(MAXDATASIZE);
-
   size_t bytes;
   int bytesRead = 0;
-
-  char *accessMethod, *fileName;
 
   verify(bytes = read(clientSocket, buffer, MAXDATASIZE));
   buffer[bytes - 1] = '\0';
@@ -93,7 +90,6 @@ void *serveRequest(void *client) {
   }
 
   close(clientSocket);
-  free(buffer);
   fclose(fp);
   return NULL;
 }
@@ -148,7 +144,6 @@ int main(int argc, char *argv[]) {
     cout << "\n*****server waiting for new client connection:*****\n";
     clientAddressLength = sizeof(clientAddress);
     acceptFd = accept(listenFd, (struct sockaddr *)&clientAddress, &clientAddressLength);
-    totalClients++;
     
     cout << "accept = " << acceptFd << " listenFd = " << listenFd << endl;
 
