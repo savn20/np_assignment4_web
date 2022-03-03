@@ -1,26 +1,19 @@
-CC_FLAGS= -Wall -I.
-LD_FLAGS= -Wall -L./ 
+CC = gcc -pthread -std=gnu99 -ggdb
 
-all: libcalc serverthread serverfork
+DEPS = threadpool/threadpool.h threadpool/threads.h
 
-serverthread.o: serverthread.cpp
-	$(CXX) $(CC_FLAGS) $(LD_FLAGS) -c serverthread.cpp
+%.o: %.c $(DEPS)
+	$(CC) -c -o $@ $<
 
-serverfork.o: serverfork.cpp
-	$(CXX) $(CC_FLAGS) $(LD_FLAGS) -c serverfork.cpp
+all: serverthread serverfork
 
+S_FORK = serverfork.o
+serverfork: $(S_FORK)
+	$(CXX) -o $@ $^
 
-serverfork: serverfork.o 
-	$(CXX) $(LD_FLAGS) -o serverfork serverfork.o -lcalc
-
-serverthread: serverthread.o 
-	$(CXX) $(LD_FLAGS) -o serverthread serverthread.o -lpthread -lcalc
-
-calcLib.o: calcLib.c calcLib.h
-	gcc -Wall -fPIC -c calcLib.c
-
-libcalc: calcLib.o
-	ar -rc libcalc.a -o calcLib.o
+S_THREAD = serverthread.o threadpool/threadpool.o
+serverthread: $(S_THREAD)
+	$(CC) -o $@ $^
 
 clean:
 	rm *.o *.a perf_*.txt  tmp.* serverfork serverthread
